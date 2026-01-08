@@ -1,0 +1,11 @@
+prefix=@CMAKE_INSTALL_PREFIX@
+exec_prefix=${prefix}
+libdir=${prefix}/@CMAKE_INSTALL_LIBDIR@
+includedir=${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
+
+Name: camera_toolkit
+Description: @PROJECT_DESCRIPTION@
+Version: @PROJECT_VERSION@
+Requires: libavcodec libavutil libswscale
+Libs: -L${libdir} -lcamera_toolkit
+Cflags: -I${includedir}

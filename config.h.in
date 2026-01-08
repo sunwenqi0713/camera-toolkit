@@ -1,0 +1,18 @@
+/**
+ * @file Config.h
+ * @brief camera_toolkit 配置头文件
+ *
+ * 包含版本信息等配置常量
+ */
+#pragma once
+
+#include <string_view>
+
+namespace camera_toolkit {
+
+/**
+ * @brief 版本号字符串
+ */
+inline constexpr std::string_view VERSION = "@CK_VERSION@";
+
+}  // namespace camera_toolkit
