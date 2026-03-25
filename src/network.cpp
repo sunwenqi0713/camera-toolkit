@@ -11,7 +11,8 @@
 #include <unistd.h>
 
 #include <cstring>
-#include <iostream>
+
+#include "log.h"
 
 namespace camera_toolkit {
 
@@ -41,7 +42,14 @@ class Network::Impl {
     std::memset(&serverAddr_, 0, sizeof(serverAddr_));
     serverAddr_.sin_family = AF_INET;
     serverAddr_.sin_port = htons(params_.serverPort);
-    serverAddr_.sin_addr.s_addr = inet_addr(params_.serverIP.c_str());
+
+    in_addr_t addr = inet_addr(params_.serverIP.c_str());
+    if (addr == INADDR_NONE) {
+      close(socketFd_);
+      socketFd_ = -1;
+      throw NetworkException("Invalid server IP address: " + params_.serverIP);
+    }
+    serverAddr_.sin_addr.s_addr = addr;
 
     // 连接
     int ret = connect(socketFd_, reinterpret_cast<struct sockaddr*>(&serverAddr_), sizeof(serverAddr_));
@@ -53,8 +61,8 @@ class Network::Impl {
     }
 
     connected_ = true;
-    std::cout << "+++ Network opened (" << (params_.type == NetworkType::TCP ? "TCP" : "UDP") << " -> "
-              << params_.serverIP << ":" << params_.serverPort << ")" << std::endl;
+    log::info("Network opened (" + std::string(params_.type == NetworkType::TCP ? "TCP" : "UDP") + " -> " +
+              params_.serverIP + ":" + std::to_string(params_.serverPort) + ")");
   }
 
   /**
@@ -65,7 +73,7 @@ class Network::Impl {
       close(socketFd_);
       socketFd_ = -1;
     }
-    std::cout << "+++ Network closed" << std::endl;
+    log::info("Network closed");
   }
 
   /**

@@ -4,11 +4,10 @@
  */
 #include "camera_toolkit/convert.h"
 
-#include <cassert>
 #include <cstring>
-#include <iostream>
 
 #include "ffmpeg_common.h"
+#include "log.h"
 
 namespace camera_toolkit {
 
@@ -78,7 +77,7 @@ class Convert::Impl {
     av_image_fill_arrays(dstFrame_->data, dstFrame_->linesize, dstBuffer_, outAVFormat_, params_.outWidth,
                          params_.outHeight, 1);
 
-    std::cout << "+++ Convert opened" << std::endl;
+    log::info("Convert opened");
   }
 
   /**
@@ -91,7 +90,7 @@ class Convert::Impl {
     if (srcFrame_) av_frame_free(&srcFrame_);
     if (swsCtx_) sws_freeContext(swsCtx_);
 
-    std::cout << "+++ Convert closed" << std::endl;
+    log::info("Convert closed");
   }
 
   /**
@@ -100,7 +99,10 @@ class Convert::Impl {
    * @return 包含转换后图像的Buffer
    */
   Buffer convert(const Buffer& input) {
-    assert(input.size == srcBufferSize_);
+    if (input.size != srcBufferSize_) {
+      throw ConvertException("Input buffer size mismatch: expected " + std::to_string(srcBufferSize_) + ", got " +
+                             std::to_string(input.size));
+    }
 
     std::memcpy(srcBuffer_, input.data, input.size);
 

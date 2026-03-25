@@ -8,15 +8,20 @@
 #include <sys/time.h>
 
 #include <cstring>
-#include <iostream>
 #include <vector>
+
+#include "log.h"
 
 namespace camera_toolkit {
 
 namespace {
 
-constexpr int H264_PAYLOAD_TYPE = 96;      /**< H264负载类型 */
-constexpr int MAX_OUTBUF_SIZE = 10 * 1024; /**< 最大输出缓冲区大小(10KB) */
+constexpr int H264_PAYLOAD_TYPE = 96;           /**< H264负载类型 */
+constexpr int MAX_OUTBUF_SIZE = 10 * 1024;      /**< 最大输出缓冲区大小(10KB) */
+constexpr int RTP_HEADER_SIZE = 12;             /**< RTP固定头大小(字节) */
+constexpr int SINGLE_NALU_PAYLOAD_OFFSET = 13;  /**< 单NALU负载偏移: RTP(12)+NALU头(1) */
+constexpr int FU_HEADERS_SIZE = 14;             /**< FU-A总头大小: RTP(12)+FU指示符(1)+FU头(1) */
+constexpr uint8_t FU_A_TYPE = 28;               /**< FU-A类型值 */
 
 /**
  * @brief RTP头结构体 (小端字节序位域)
@@ -119,13 +124,13 @@ class RTPPacker::Impl {
     outBuffer_.resize(MAX_OUTBUF_SIZE);
     tsStartMillisec_ = getCurrentMillisec();
 
-    std::cout << "+++ RTPPacker opened" << std::endl;
+    log::info("RTPPacker opened");
   }
 
   /**
    * @brief 析构函数
    */
-  ~Impl() { std::cout << "+++ RTPPacker closed" << std::endl; }
+  ~Impl() { log::info("RTPPacker closed"); }
 
   /**
    * @brief 放入待打包的NAL单元
@@ -145,28 +150,24 @@ class RTPPacker::Impl {
   /**
    * @brief 获取下一个RTP包
    * @return 包含RTP包的Buffer，无更多包时返回nullopt
-   * @throws PackException 缓冲区溢出时抛出
+   * @throws PackException 缓冲区溢出或越界时抛出
    */
   std::optional<Buffer> get() {
     if (inBufferComplete_) {
       return std::nullopt;
     }
 
-    // 清空输出缓冲区
     std::memset(outBuffer_.data(), 0, MAX_OUTBUF_SIZE);
-    char* tmpOutbuf = outBuffer_.data();
+    char* outBuf = outBuffer_.data();
 
-    // 设置通用RTP头
-    auto* rtpHdr = reinterpret_cast<RTPHeader*>(tmpOutbuf);
+    auto* rtpHdr = reinterpret_cast<RTPHeader*>(outBuf);
     rtpHdr->payload = H264_PAYLOAD_TYPE;
     rtpHdr->version = 2;
     rtpHdr->marker = 0;
     rtpHdr->ssrc = htonl(params_.ssrc);
 
     if (naluComplete_) {
-      // 当前NAL单元完成，查找下一个NAL单元
-      int ret = getNextNalu();
-      if (ret <= 0) {
+      if (getNextNalu() <= 0) {
         inBufferComplete_ = true;
         return std::nullopt;
       }
@@ -176,123 +177,18 @@ class RTPPacker::Impl {
       rtpHdr->timestamp = htonl(tsCurrentSample_);
 
       if (nalu_.len <= params_.maxPacketLength) {
-        // 无需分片
-        rtpHdr->marker = 1;
-
-        auto* naluHdr = reinterpret_cast<NALUHeader*>(tmpOutbuf + 12);
-        naluHdr->f = nalu_.forbiddenBit;
-        naluHdr->nri = nalu_.nalRefIdc;
-        naluHdr->type = nalu_.nalUnitType;
-
-        char* naluPayload = tmpOutbuf + 13;  // 12字节RTP + 1字节NALU头
-        int outSize = nalu_.len + 12;
-
-        if (MAX_OUTBUF_SIZE < outSize) {
-          throw PackException("RTP output buffer overflow");
-        }
-
-        std::memcpy(naluPayload, nalu_.data + 1, nalu_.len - 1);  // 排除NALU头
-        naluComplete_ = true;
-
-        return Buffer(outBuffer_.data(), outSize);
+        return packSingleNAL(outBuf, rtpHdr);
       } else {
-        // 需要分片
-        if (nalu_.len % params_.maxPacketLength == 0) {
-          fuCounter_ = nalu_.len / params_.maxPacketLength - 1;
-          lastFuSize_ = params_.maxPacketLength;
-        } else {
-          fuCounter_ = nalu_.len / params_.maxPacketLength;
-          lastFuSize_ = nalu_.len % params_.maxPacketLength;
-        }
-        fuIndex_ = 0;
-
-        // 第一个FU
-        rtpHdr->marker = 0;
-
-        auto* fuInd = reinterpret_cast<FUIndicator*>(tmpOutbuf + 12);
-        fuInd->f = nalu_.forbiddenBit;
-        fuInd->nri = nalu_.nalRefIdc;
-        fuInd->type = 28;  // FU-A
-
-        auto* fuHdr = reinterpret_cast<FUHeader*>(tmpOutbuf + 13);
-        fuHdr->e = 0;
-        fuHdr->r = 0;
-        fuHdr->s = 1;  // 起始位
-        fuHdr->type = nalu_.nalUnitType;
-
-        char* naluPayload = tmpOutbuf + 14;
-        int outSize = params_.maxPacketLength + 14;
-
-        if (MAX_OUTBUF_SIZE < outSize) {
-          throw PackException("RTP output buffer overflow");
-        }
-
-        std::memcpy(naluPayload, nalu_.data + 1, params_.maxPacketLength);
-        naluComplete_ = false;
-        fuIndex_++;
-
-        return Buffer(outBuffer_.data(), outSize);
+        return packFirstFU(outBuf, rtpHdr);
       }
     } else {
-      // 发送剩余的FU
       rtpHdr->seqNo = htons(seqNum_++);
       rtpHdr->timestamp = htonl(tsCurrentSample_);
 
       if (fuIndex_ == fuCounter_) {
-        // 最后一个FU
-        rtpHdr->marker = 1;
-
-        auto* fuInd = reinterpret_cast<FUIndicator*>(tmpOutbuf + 12);
-        fuInd->f = nalu_.forbiddenBit;
-        fuInd->nri = nalu_.nalRefIdc;
-        fuInd->type = 28;
-
-        auto* fuHdr = reinterpret_cast<FUHeader*>(tmpOutbuf + 13);
-        fuHdr->r = 0;
-        fuHdr->s = 0;
-        fuHdr->type = nalu_.nalUnitType;
-        fuHdr->e = 1;  // 结束位
-
-        char* naluPayload = tmpOutbuf + 14;
-        int outSize = lastFuSize_ - 1 + 14;
-
-        if (MAX_OUTBUF_SIZE < outSize) {
-          throw PackException("RTP output buffer overflow");
-        }
-
-        std::memcpy(naluPayload, nalu_.data + 1 + fuIndex_ * params_.maxPacketLength, lastFuSize_ - 1);
-
-        naluComplete_ = true;
-        fuIndex_ = 0;
-
-        return Buffer(outBuffer_.data(), outSize);
+        return packLastFU(outBuf, rtpHdr);
       } else {
-        // 中间FU
-        rtpHdr->marker = 0;
-
-        auto* fuInd = reinterpret_cast<FUIndicator*>(tmpOutbuf + 12);
-        fuInd->f = nalu_.forbiddenBit;
-        fuInd->nri = nalu_.nalRefIdc;
-        fuInd->type = 28;
-
-        auto* fuHdr = reinterpret_cast<FUHeader*>(tmpOutbuf + 13);
-        fuHdr->r = 0;
-        fuHdr->s = 0;
-        fuHdr->type = nalu_.nalUnitType;
-        fuHdr->e = 0;
-
-        char* naluPayload = tmpOutbuf + 14;
-        int outSize = params_.maxPacketLength + 14;
-
-        if (MAX_OUTBUF_SIZE < outSize) {
-          throw PackException("RTP output buffer overflow");
-        }
-
-        std::memcpy(naluPayload, nalu_.data + 1 + fuIndex_ * params_.maxPacketLength, params_.maxPacketLength);
-
-        fuIndex_++;
-
-        return Buffer(outBuffer_.data(), outSize);
+        return packMiddleFU(outBuf, rtpHdr);
       }
     }
   }
@@ -304,6 +200,127 @@ class RTPPacker::Impl {
   const RTPPackerParams& getParams() const { return params_; }
 
  private:
+  /**
+   * @brief 填充FU-A指示符和头部
+   * @param buf 写入位置指针（指向RTP头之后）
+   * @param isStart 是否为起始分片
+   * @param isEnd 是否为结束分片
+   */
+  void fillFUHeaders(char* buf, bool isStart, bool isEnd) {
+    auto* fuInd = reinterpret_cast<FUIndicator*>(buf);
+    fuInd->f = nalu_.forbiddenBit;
+    fuInd->nri = nalu_.nalRefIdc;
+    fuInd->type = FU_A_TYPE;
+
+    auto* fuHdr = reinterpret_cast<FUHeader*>(buf + 1);
+    fuHdr->r = 0;
+    fuHdr->s = isStart ? 1 : 0;
+    fuHdr->e = isEnd ? 1 : 0;
+    fuHdr->type = nalu_.nalUnitType;
+  }
+
+  /**
+   * @brief 打包单个完整NALU（无需分片）
+   */
+  Buffer packSingleNAL(char* outBuf, RTPHeader* rtpHdr) {
+    rtpHdr->marker = 1;
+
+    auto* naluHdr = reinterpret_cast<NALUHeader*>(outBuf + RTP_HEADER_SIZE);
+    naluHdr->f = nalu_.forbiddenBit;
+    naluHdr->nri = nalu_.nalRefIdc;
+    naluHdr->type = nalu_.nalUnitType;
+
+    int outSize = nalu_.len + RTP_HEADER_SIZE;
+    if (outSize > MAX_OUTBUF_SIZE) {
+      throw PackException("RTP output buffer overflow (single NALU, size=" + std::to_string(outSize) + ")");
+    }
+
+    // nalu_.data[0] 是NALU头字节，已写入naluHdr，跳过
+    std::memcpy(outBuf + SINGLE_NALU_PAYLOAD_OFFSET, nalu_.data + 1, nalu_.len - 1);
+    naluComplete_ = true;
+    return Buffer(outBuf, outSize);
+  }
+
+  /**
+   * @brief 打包FU-A第一个分片
+   */
+  Buffer packFirstFU(char* outBuf, RTPHeader* rtpHdr) {
+    // 计算分片数量
+    if (nalu_.len % params_.maxPacketLength == 0) {
+      fuCounter_ = nalu_.len / params_.maxPacketLength - 1;
+      lastFuSize_ = params_.maxPacketLength;
+    } else {
+      fuCounter_ = nalu_.len / params_.maxPacketLength;
+      lastFuSize_ = nalu_.len % params_.maxPacketLength;
+    }
+    fuIndex_ = 0;
+
+    rtpHdr->marker = 0;
+    fillFUHeaders(outBuf + RTP_HEADER_SIZE, /*isStart=*/true, /*isEnd=*/false);
+
+    int outSize = params_.maxPacketLength + FU_HEADERS_SIZE;
+    if (outSize > MAX_OUTBUF_SIZE) {
+      throw PackException("RTP output buffer overflow (first FU-A, size=" + std::to_string(outSize) + ")");
+    }
+
+    // 第一个分片跳过NALU头字节，从data[1]开始
+    std::memcpy(outBuf + FU_HEADERS_SIZE, nalu_.data + 1, params_.maxPacketLength);
+    naluComplete_ = false;
+    fuIndex_++;
+    return Buffer(outBuf, outSize);
+  }
+
+  /**
+   * @brief 打包FU-A最后一个分片
+   */
+  Buffer packLastFU(char* outBuf, RTPHeader* rtpHdr) {
+    if (lastFuSize_ < 1) {
+      throw PackException("Invalid last FU-A size: " + std::to_string(lastFuSize_));
+    }
+
+    // 校验偏移不越界
+    int payloadOffset = fuIndex_ * params_.maxPacketLength;
+    if (payloadOffset + lastFuSize_ - 1 > nalu_.len - 1) {
+      throw PackException("FU-A last fragment out of bounds (offset=" + std::to_string(payloadOffset) + ")");
+    }
+
+    rtpHdr->marker = 1;
+    fillFUHeaders(outBuf + RTP_HEADER_SIZE, /*isStart=*/false, /*isEnd=*/true);
+
+    int outSize = lastFuSize_ - 1 + FU_HEADERS_SIZE;
+    if (outSize > MAX_OUTBUF_SIZE) {
+      throw PackException("RTP output buffer overflow (last FU-A, size=" + std::to_string(outSize) + ")");
+    }
+
+    std::memcpy(outBuf + FU_HEADERS_SIZE, nalu_.data + 1 + payloadOffset, lastFuSize_ - 1);
+    naluComplete_ = true;
+    fuIndex_ = 0;
+    return Buffer(outBuf, outSize);
+  }
+
+  /**
+   * @brief 打包FU-A中间分片
+   */
+  Buffer packMiddleFU(char* outBuf, RTPHeader* rtpHdr) {
+    // 校验偏移不越界
+    int payloadOffset = fuIndex_ * params_.maxPacketLength;
+    if (payloadOffset + params_.maxPacketLength > nalu_.len - 1) {
+      throw PackException("FU-A middle fragment out of bounds (offset=" + std::to_string(payloadOffset) + ")");
+    }
+
+    rtpHdr->marker = 0;
+    fillFUHeaders(outBuf + RTP_HEADER_SIZE, /*isStart=*/false, /*isEnd=*/false);
+
+    int outSize = params_.maxPacketLength + FU_HEADERS_SIZE;
+    if (outSize > MAX_OUTBUF_SIZE) {
+      throw PackException("RTP output buffer overflow (middle FU-A, size=" + std::to_string(outSize) + ")");
+    }
+
+    std::memcpy(outBuf + FU_HEADERS_SIZE, nalu_.data + 1 + payloadOffset, params_.maxPacketLength);
+    fuIndex_++;
+    return Buffer(outBuf, outSize);
+  }
+
   /**
    * @brief 获取下一个NAL单元
    * @return 成功返回1，失败返回0或负值
@@ -319,7 +336,7 @@ class RTPPacker::Impl {
     } else if (isStartCode4(nextNaluPtr_)) {
       nalu_.startCodeLen = 4;
     } else {
-      std::cerr << "!!! No start code found" << std::endl;
+      log::warn("No start code found in NAL unit data");
       return -1;
     }
 

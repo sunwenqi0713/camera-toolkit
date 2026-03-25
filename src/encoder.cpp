@@ -4,11 +4,10 @@
  */
 #include "camera_toolkit/encoder.h"
 
-#include <cassert>
 #include <cstring>
-#include <iostream>
 
 #include "ffmpeg_common.h"
+#include "log.h"
 
 namespace camera_toolkit {
 
@@ -87,7 +86,7 @@ class Encoder::Impl {
       throw EncodeException("Could not allocate packet");
     }
 
-    std::cout << "+++ Encoder opened" << std::endl;
+    log::info("Encoder opened");
   }
 
   /**
@@ -99,7 +98,7 @@ class Encoder::Impl {
     if (frame_) av_frame_free(&frame_);
     if (ctx_) avcodec_free_context(&ctx_);
 
-    std::cout << "+++ Encoder closed" << std::endl;
+    log::info("Encoder closed");
   }
 
   /**
@@ -118,7 +117,10 @@ class Encoder::Impl {
    * @throws EncodeException 编码失败时抛出
    */
   EncodedFrame encode(const Buffer& input) {
-    assert(input.size == inBufferSize_);
+    if (input.size != inBufferSize_) {
+      throw EncodeException("Input buffer size mismatch: expected " + std::to_string(inBufferSize_) + ", got " +
+                            std::to_string(input.size));
+    }
 
     // 复制输入到帧缓冲区
     std::memcpy(inBuffer_, input.data, input.size);
@@ -138,7 +140,7 @@ class Encoder::Impl {
     // 接收编码后的数据包
     ret = avcodec_receive_packet(ctx_, packet_);
     if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
-      std::cerr << "!!! Encoded frame delayed" << std::endl;
+      log::warn("Encoded frame delayed");
       return EncodedFrame{};
     } else if (ret < 0) {
       throw EncodeException("Error during encoding");
@@ -170,7 +172,7 @@ class Encoder::Impl {
    * @note 此函数未实现
    */
   bool setQP(int /*qp*/) {
-    std::cerr << "*** setQP: This function is not implemented" << std::endl;
+    log::warn("setQP: This function is not implemented");
     return false;
   }
 
@@ -227,7 +229,7 @@ class Encoder::Impl {
   AVPacket* packet_ = nullptr;     /**< 数据包 */
   uint8_t* inBuffer_ = nullptr;    /**< 输入缓冲区 */
   int inBufferSize_ = 0;           /**< 输入缓冲区大小 */
-  unsigned long frameCounter_ = 0; /**< 帧计数器 */
+  int64_t frameCounter_ = 0; /**< 帧计数器 */
 };
 
 // ============================================================================

@@ -13,11 +13,11 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include <cassert>
 #include <cerrno>
 #include <cstring>
-#include <iostream>
 #include <vector>
+
+#include "log.h"
 
 namespace camera_toolkit {
 
@@ -95,10 +95,10 @@ class Capture::Impl {
       throw CaptureException("Cannot open device " + params_.deviceName + ": " + std::strerror(errno));
     }
 
-    std::cout << "+++ Capture opened" << std::endl;
+    log::info("Capture opened");
 
     initDevice();
-    std::cout << "+++ Capture initialized" << std::endl;
+    log::info("Capture initialized");
   }
 
   /**
@@ -112,7 +112,7 @@ class Capture::Impl {
       fd_ = -1;
     }
 
-    std::cout << "+++ Capture closed" << std::endl;
+    log::info("Capture closed");
   }
 
   /**
@@ -137,7 +137,7 @@ class Capture::Impl {
     }
 
     v4lBufPut_ = true;
-    std::cout << "+++ Capture started" << std::endl;
+    log::info("Capture started");
   }
 
   /**
@@ -146,7 +146,7 @@ class Capture::Impl {
   void stop() {
     v4l2_buf_type type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
     xioctl(fd_, VIDIOC_STREAMOFF, &type);
-    std::cout << "+++ Capture stopped" << std::endl;
+    log::info("Capture stopped");
   }
 
   /**
@@ -193,7 +193,9 @@ class Capture::Impl {
       throw CaptureException("VIDIOC_DQBUF failed");
     }
 
-    assert(v4lBuf_.index < buffers_.size());
+    if (v4lBuf_.index >= buffers_.size()) {
+      throw CaptureException("V4L2 buffer index out of range: " + std::to_string(v4lBuf_.index));
+    }
 
     v4lBufPut_ = false;
     imageCounter_++;
@@ -291,8 +293,8 @@ class Capture::Impl {
       crop.c = cropcap.defrect;
 
       if (xioctl(fd_, VIDIOC_S_CROP, &crop) == 0) {
-        std::cout << "+++ Set crop to (" << crop.c.left << ", " << crop.c.top << ", " << crop.c.width << ", "
-                  << crop.c.height << ")" << std::endl;
+        log::info("Set crop to (" + std::to_string(crop.c.left) + ", " + std::to_string(crop.c.top) + ", " +
+                  std::to_string(crop.c.width) + ", " + std::to_string(crop.c.height) + ")");
       }
     }
 
@@ -326,7 +328,7 @@ class Capture::Impl {
     sparam.parm.capture.timeperframe.numerator = 1;
 
     if (xioctl(fd_, VIDIOC_S_PARM, &sparam) == -1) {
-      std::cerr << "!!! Set capture params failed" << std::endl;
+      log::warn("Set capture params failed, frame rate may not be applied");
     }
 
     // 设置输入
@@ -376,7 +378,7 @@ class Capture::Impl {
       }
     }
 
-    std::cout << "+++ Device initialized with " << buffers_.size() << " buffers" << std::endl;
+    log::info("Device initialized with " + std::to_string(buffers_.size()) + " buffers");
   }
 
   /**
@@ -389,7 +391,7 @@ class Capture::Impl {
       }
     }
     buffers_.clear();
-    std::cout << "+++ Device uninitialized" << std::endl;
+    log::info("Device uninitialized");
   }
 
   CaptureParams params_;            /**< 采集参数 */
