@@ -63,6 +63,17 @@ sudo make install
 | `DEBUG` | 启用调试模式 | `OFF` |
 | `BUILD_SHARED_LIBS` | 构建动态库 | `ON` |
 | `BUILD_TOOL` | 构建命令行工具 | `ON` |
+| `BUILD_TESTS` | 构建单元测试 | `OFF` |
+
+### 运行单元测试
+
+```bash
+cmake -B build -DBUILD_TESTS=ON
+cmake --build build --parallel
+ctest --test-dir build --output-on-failure
+```
+
+> 测试使用 [GoogleTest](https://github.com/google/googletest)，CMake 会通过 FetchContent 自动下载。
 
 ## 快速开始
 
@@ -128,14 +139,8 @@ int main() {
         
         capture.stop();
         
-    } catch (const CaptureException& e) {
-        std::cerr << "Capture error: " << e.what() << std::endl;
-        return 1;
-    } catch (const ConvertException& e) {
-        std::cerr << "Convert error: " << e.what() << std::endl;
-        return 1;
-    } catch (const EncodeException& e) {
-        std::cerr << "Encode error: " << e.what() << std::endl;
+    } catch (const CameraToolkitException& e) {
+        std::cerr << "Error: " << e.what() << std::endl;
         return 1;
     }
     
@@ -267,7 +272,6 @@ public:
     EncodedFrame encode(const Buffer& input);  // 编码一帧
     
     // 动态参数调整
-    bool setQP(int qp);           // 量化参数 (0-51)
     bool setGOP(int gop);         // GOP 大小
     bool setBitrate(int bitrate); // 码率 (kbps)
     bool setFramerate(int fps);   // 帧率
@@ -330,7 +334,15 @@ public:
 | `NetworkException` | 网络错误（连接失败、发送失败等） |
 | `PackException` | 打包错误（缓冲区溢出等） |
 
-所有异常类都继承自 `camera_toolkitException`（继承自 `std::runtime_error`）。
+所有异常类都继承自 `CameraToolkitException`（继承自 `std::runtime_error`），可统一捕获：
+
+```cpp
+try {
+    // ...
+} catch (const camera_toolkit::CameraToolkitException& e) {
+    std::cerr << e.what() << std::endl;
+}
+```
 
 ## 支持的格式
 

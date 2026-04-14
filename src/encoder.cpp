@@ -165,18 +165,6 @@ class Encoder::Impl {
   }
 
   /**
-   * @brief 设置量化参数
-   * @param qp QP值(H264为0-51)
-   * @return 成功返回true
-   *
-   * @note 此函数未实现
-   */
-  bool setQP(int /*qp*/) {
-    log::warn("setQP: This function is not implemented");
-    return false;
-  }
-
-  /**
    * @brief 设置GOP大小
    * @param gop 新的GOP大小
    * @return 成功返回true
@@ -243,8 +231,6 @@ Encoder::~Encoder() = default;
 std::optional<EncodedFrame> Encoder::getHeaders() { return pImpl_->getHeaders(); }
 
 EncodedFrame Encoder::encode(const Buffer& input) { return pImpl_->encode(input); }
-
-bool Encoder::setQP(int qp) { return pImpl_->setQP(qp); }
 
 bool Encoder::setGOP(int gop) { return pImpl_->setGOP(gop); }
 

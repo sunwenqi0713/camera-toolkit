@@ -22,6 +22,7 @@ option(DEBUG "Enable debug mode" OFF)
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 option(BUILD_TOOL "Build camera_toolkit command-line tool" ON)
 option(BUILD_EXAMPLES "Build example programs" OFF)
+option(BUILD_TESTS "Build unit tests" OFF)
 
 # ==============================================================================
 # 编译器设置
@@ -231,6 +232,14 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/camera_toolkit.pc
 )
 
 # ==============================================================================
+# 单元测试
+# ==============================================================================
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+# ==============================================================================
 # 构建信息摘要
 # ==============================================================================
 message(STATUS "")
@@ -240,6 +249,7 @@ message(STATUS "Platform:        ${PLAT}")
 message(STATUS "Build type:      ${CMAKE_BUILD_TYPE}")
 message(STATUS "Shared libs:     ${BUILD_SHARED_LIBS}")
 message(STATUS "Build tool:      ${BUILD_TOOL}")
+message(STATUS "Build tests:     ${BUILD_TESTS}")
 message(STATUS "Install prefix:  ${CMAKE_INSTALL_PREFIX}")
 message(STATUS "====================================")
 message(STATUS "")

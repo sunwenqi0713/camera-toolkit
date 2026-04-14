@@ -398,7 +398,7 @@ int main(int argc, char* argv[]) {
 
     capture->stop();
 
-  } catch (const camera_toolkit::camera_toolkitException& e) {
+  } catch (const camera_toolkit::CameraToolkitException& e) {
     std::cerr << "--- Error: " << e.what() << std::endl;
     return -1;
   }

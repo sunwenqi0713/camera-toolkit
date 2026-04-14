@@ -1,1 +1,34 @@
+# 构建输出
 build/
+out/
+
+# CMake 生成文件
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+*.cmake
+!cmake/*.cmake.in
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# clangd
+.cache/
+
+# 库文件
+*.so
+*.so.*
+*.a
+*.dylib
+
+# 可执行文件
+camtool
+
+# 安装目录
+install/

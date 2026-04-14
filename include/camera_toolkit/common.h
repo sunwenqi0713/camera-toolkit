@@ -73,73 +73,73 @@ struct Buffer {
 /**
  * @brief camera_toolkit异常基类
  */
-class camera_toolkitException : public std::runtime_error {
+class CameraToolkitException : public std::runtime_error {
  public:
   /**
    * @brief 构造函数
    * @param message 错误消息
    */
-  explicit camera_toolkitException(const std::string& message) : std::runtime_error(message) {}
+  explicit CameraToolkitException(const std::string& message) : std::runtime_error(message) {}
 };
 
 /**
  * @brief 采集异常类
  */
-class CaptureException : public camera_toolkitException {
+class CaptureException : public CameraToolkitException {
  public:
   /**
    * @brief 构造函数
    * @param message 错误消息
    */
-  explicit CaptureException(const std::string& message) : camera_toolkitException("Capture error: " + message) {}
+  explicit CaptureException(const std::string& message) : CameraToolkitException("Capture error: " + message) {}
 };
 
 /**
  * @brief 转换异常类
  */
-class ConvertException : public camera_toolkitException {
+class ConvertException : public CameraToolkitException {
  public:
   /**
    * @brief 构造函数
    * @param message 错误消息
    */
-  explicit ConvertException(const std::string& message) : camera_toolkitException("Convert error: " + message) {}
+  explicit ConvertException(const std::string& message) : CameraToolkitException("Convert error: " + message) {}
 };
 
 /**
  * @brief 编码异常类
  */
-class EncodeException : public camera_toolkitException {
+class EncodeException : public CameraToolkitException {
  public:
   /**
    * @brief 构造函数
    * @param message 错误消息
    */
-  explicit EncodeException(const std::string& message) : camera_toolkitException("Encode error: " + message) {}
+  explicit EncodeException(const std::string& message) : CameraToolkitException("Encode error: " + message) {}
 };
 
 /**
  * @brief 网络异常类
  */
-class NetworkException : public camera_toolkitException {
+class NetworkException : public CameraToolkitException {
  public:
   /**
    * @brief 构造函数
    * @param message 错误消息
    */
-  explicit NetworkException(const std::string& message) : camera_toolkitException("Network error: " + message) {}
+  explicit NetworkException(const std::string& message) : CameraToolkitException("Network error: " + message) {}
 };
 
 /**
  * @brief 打包异常类
  */
-class PackException : public camera_toolkitException {
+class PackException : public CameraToolkitException {
  public:
   /**
    * @brief 构造函数
    * @param message 错误消息
    */
-  explicit PackException(const std::string& message) : camera_toolkitException("Pack error: " + message) {}
+  explicit PackException(const std::string& message) : CameraToolkitException("Pack error: " + message) {}
 };
 
 /**

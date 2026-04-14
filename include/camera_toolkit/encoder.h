@@ -79,15 +79,6 @@ class Encoder : public NonCopyable {
   EncodedFrame encode(const Buffer& input);
 
   /**
-   * @brief 设置量化参数
-   * @param qp QP值(H264为0-51)
-   * @return 成功返回true
-   *
-   * @note 仅在禁用码率控制(bitrate=0)时有效
-   */
-  bool setQP(int qp);
-
-  /**
    * @brief 设置GOP大小
    * @param gop 新的GOP大小
    * @return 成功返回true

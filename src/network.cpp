@@ -43,13 +43,11 @@ class Network::Impl {
     serverAddr_.sin_family = AF_INET;
     serverAddr_.sin_port = htons(params_.serverPort);
 
-    in_addr_t addr = inet_addr(params_.serverIP.c_str());
-    if (addr == INADDR_NONE) {
+    if (inet_pton(AF_INET, params_.serverIP.c_str(), &serverAddr_.sin_addr) <= 0) {
       close(socketFd_);
       socketFd_ = -1;
       throw NetworkException("Invalid server IP address: " + params_.serverIP);
     }
-    serverAddr_.sin_addr.s_addr = addr;
 
     // 连接
     int ret = connect(socketFd_, reinterpret_cast<struct sockaddr*>(&serverAddr_), sizeof(serverAddr_));
